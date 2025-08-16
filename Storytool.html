@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ユメステ ストーリーまとめ特化ツール (共有機能付き)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', 'Noto Sans JP', sans-serif; }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #888; border-radius: 10px; }
+        .prose-pre-wrap { white-space: pre-wrap; word-wrap: break-word; }
+        .tag-badge { display: inline-block; padding: 0.25rem 0.75rem; margin: 0.25rem; border-radius: 9999px; font-size: 0.875rem; font-weight: 500; cursor: pointer; }
+        .character-selector-item { border: 2px solid transparent; transition: all 0.2s; }
+        .character-selector-item.selected { border-color: #4f46e5; background-color: #e0e7ff; }
+        .dark .character-selector-item.selected { border-color: #818cf8; background-color: #3730a3; }
+        .form-disabled { pointer-events: none; opacity: 0.6; }
+        #loader { border-top-color: #4f46e5; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+    </style>
+</head>
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200">
+
+    <!-- ローディングオーバーレイ -->
+    <div id="loading-overlay" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div id="loader" class="w-16 h-16 border-8 border-gray-300 rounded-full animate-spin"></div>
+    </div>
+
+    <div class="flex flex-col md:flex-row h-screen">
+        <!-- ===== 左ペイン: 入力フォームとカード一覧 ===== -->
+        <div id="left-pane" class="w-full md:w-1/3 lg:w-1/4 p-4 bg-white dark:bg-gray-800 shadow-lg overflow-y-auto">
+            <div class="flex justify-between items-center mb-4">
+                <h1 class="text-2xl font-bold">ユメステ ストーリーまとめ</h1>
+                <div class="flex items-center space-x-2">
+                    <button id="open-character-manager-btn" class="p-2 bg-gray-200 dark:bg-gray-600 rounded-md hover:bg-gray-300 dark:hover:bg-gray-500" title="キャラクター管理">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M15 21a6 6 0 00-9-5.197M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                    </button>
+                    <button id="share-btn" class="p-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:bg-blue-300" title="共有">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12s-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.368a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z" /></svg>
+                    </button>
+                </div>
+            </div>
+            
+            <div id="form-section" class="mb-6">
+                <h2 id="form-title" class="text-xl font-semibold mb-3">新規ストーリー作成</h2>
+                <form id="card-form" class="space-y-4">
+                    <input type="hidden" id="card-id">
+                    <input type="hidden" id="card-image-data">
+                    <div>
+                        <label for="card-type" class="block text-sm font-medium">ストーリー種別</label>
+                        <select id="card-type" class="mt-1 block w-full bg-gray-50 dark:bg-gray-700 border-gray-300 rounded-md">
+                            <option>メインストーリー</option><option>イベントストーリー</option><option>サイドストーリー</option><option>ポスターストーリー</option><option>スポットストーリー</option><option>その他</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="card-title" class="block text-sm font-medium">タイトル</label>
+                        <input type="text" id="card-title" placeholder="例: 第1章 プロローグ" class="mt-1 block w-full bg-gray-50 dark:bg-gray-700 border-gray-300 rounded-md" required>
+                    </div>
+                    <div>
+                        <label for="card-source" class="block text-sm font-medium">出典</label>
+                        <input type="text" id="card-source" placeholder="例: イベント「銀河座の公演」第3話" class="mt-1 block w-full bg-gray-50 dark:bg-gray-700 border-gray-300 rounded-md">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium">登場キャラクター</label>
+                        <div id="character-selector" class="mt-2 grid grid-cols-3 sm:grid-cols-4 gap-2 p-2 bg-gray-50 dark:bg-gray-700 rounded-md max-h-48 overflow-y-auto"></div>
+                    </div>
+                    <div>
+                        <label for="card-custom-tags" class="block text-sm font-medium">カップリング・その他タグ</label>
+                        <input type="text" id="card-custom-tags" placeholder="カンマ区切りで入力 or 下から選択" class="mt-1 block w-full bg-gray-50 dark:bg-gray-700 border-gray-300 rounded-md">
+                        <div id="existing-tags-container" class="mt-2"></div>
+                    </div>
+                    <div>
+                        <label for="card-image-file" class="block text-sm font-medium">画像ファイル (任意)</label>
+                        <input type="file" id="card-image-file" accept="image/*" class="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 dark:file:bg-indigo-900 dark:file:text-indigo-300 dark:hover:file:bg-indigo-800">
+                        <img id="card-image-preview" class="mt-2 h-24 rounded-md hidden" alt="Image preview">
+                    </div>
+                    <div>
+                        <label for="card-description" class="block text-sm font-medium">あらすじ・文字起こし</label>
+                        <textarea id="card-description" rows="6" class="mt-1 block w-full bg-gray-50 dark:bg-gray-700 border-gray-300 rounded-md"></textarea>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md">保存</button>
+                        <button type="button" id="new-card-btn" class="w-full bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-md">新規</button>
+                    </div>
+                </form>
+            </div>
+
+            <div>
+                <h2 class="text-xl font-semibold mb-3">ストーリー一覧</h2>
+                <input type="text" id="search-input" placeholder="タイトルやタグで検索..." class="mb-4 block w-full bg-gray-50 dark:bg-gray-700 border-gray-300 rounded-md">
+                <div id="card-list" class="space-y-2"></div>
+            </div>
+        </div>
+
+        <!-- ===== 右ペイン: カード詳細表示 ===== -->
+        <div class="w-full md:w-2/3 lg:w-3/4 p-6 overflow-y-auto">
+            <div id="display-area" class="bg-white dark:bg-gray-800 rounded-xl shadow-md p-6 h-full">
+                <div id="placeholder" class="flex flex-col items-center justify-center h-full text-center text-gray-500">
+                     <svg class="w-16 h-16 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" /></svg>
+                    <h3 class="text-xl font-semibold">ストーリーを選択してください</h3>
+                    <p class="mt-1">左のリストから選ぶか、新しいストーリーを作成してください。</p>
+                </div>
+                <div id="card-content" class="hidden"></div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modals: Delete, Character Manager, Share -->
+    <div id="delete-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-sm">
+            <h3 class="text-lg font-bold mb-4">ストーリーの削除</h3>
+            <p class="mb-6">本当にこのストーリーを削除しますか？<br>この操作は元に戻せません。</p>
+            <div class="flex justify-end space-x-4">
+                <button id="cancel-delete" class="px-4 py-2 bg-gray-200 dark:bg-gray-600 rounded-md hover:bg-gray-300">キャンセル</button>
+                <button id="confirm-delete" class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700">削除</button>
+            </div>
+        </div>
+    </div>
+    <div id="character-manager-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-2xl max-h-[90vh] flex flex-col">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold">キャラクター管理</h3>
+                <button id="close-character-manager-btn" class="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600">&times;</button>
+            </div>
+            <div class="mb-4">
+                <form id="add-character-form" class="flex items-end space-x-2">
+                    <div class="flex-grow"><label for="char-name" class="text-sm">キャラクター名</label><input type="text" id="char-name" class="mt-1 w-full bg-gray-50 dark:bg-gray-700 border-gray-300 rounded-md" required></div>
+                    <div class="flex-grow"><label for="char-img-file" class="text-sm">画像ファイル</label><input type="file" id="char-img-file" accept="image/*" class="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 dark:file:bg-indigo-900 dark:file:text-indigo-300 dark:hover:file:bg-indigo-800"></div>
+                    <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700">追加</button>
+                </form>
+            </div>
+            <div id="character-list" class="flex-grow overflow-y-auto grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 p-2 bg-gray-50 dark:bg-gray-900 rounded"></div>
+        </div>
+    </div>
+    <div id="share-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-lg">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold">共有リンク</h3>
+                <button id="close-share-modal-btn" class="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600">&times;</button>
+            </div>
+            <div class="space-y-4">
+                <div>
+                    <label class="font-semibold">編集用リンク (自分・共同編集者用)</label>
+                    <div class="flex mt-1"><input type="text" id="edit-link-input" readonly class="w-full bg-gray-100 dark:bg-gray-700 border-gray-300 rounded-l-md"><button data-copy-target="edit-link-input" class="copy-btn px-3 bg-indigo-600 text-white rounded-r-md">コピー</button></div>
+                    <p class="text-xs text-gray-500 mt-1">このリンクを知っている人は誰でも編集できます。取り扱いにご注意ください。</p>
+                </div>
+                <div>
+                    <label class="font-semibold">閲覧のみリンク (共有用)</label>
+                    <div class="flex mt-1"><input type="text" id="view-link-input" readonly class="w-full bg-gray-100 dark:bg-gray-700 border-gray-300 rounded-l-md"><button data-copy-target="view-link-input" class="copy-btn px-3 bg-indigo-600 text-white rounded-r-md">コピー</button></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+<script type="module">
+    // Firebase SDKのインポート
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, signInWithCustomToken, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFirestore, doc, getDoc, setDoc, addDoc, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    // === Firebaseの初期設定 ===
+    const firebaseConfig = typeof __firebase_config !== 'undefined' 
+        ? JSON.parse(__firebase_config) 
+        : { apiKey: "YOUR_API_KEY", projectId: "YOUR_PROJECT_ID" }; // デバッグ用のフォールバック
+    
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const auth = getAuth(app);
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const envAppId = typeof __app_id !== 'undefined' ? __app_id : 'default-yumesute-app';
+
+        // DOM要素の取得
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const cardForm = document.getElementById('card-form');
+        const cardIdInput = document.getElementById('card-id');
+        const cardTypeInput = document.getElementById('card-type');
+        const cardTitleInput = document.getElementById('card-title');
+        const cardSourceInput = document.getElementById('card-source');
+        const characterSelector = document.getElementById('character-selector');
+        const cardCustomTagsInput = document.getElementById('card-custom-tags');
+        const existingTagsContainer = document.getElementById('existing-tags-container');
+        const cardImageFileInput = document.getElementById('card-image-file');
+        const cardImageDataInput = document.getElementById('card-image-data');
+        const cardImagePreview = document.getElementById('card-image-preview');
+        const cardDescriptionInput = document.getElementById('card-description');
+        const newCardBtn = document.getElementById('new-card-btn');
+        const cardList = document.getElementById('card-list');
+        const searchInput = document.getElementById('search-input');
+        const cardContent = document.getElementById('card-content');
+        const placeholder = document.getElementById('placeholder');
+        const formTitle = document.getElementById('form-title');
+        const deleteModal = document.getElementById('delete-modal');
+        const cancelDeleteBtn = document.getElementById('cancel-delete');
+        const confirmDeleteBtn = document.getElementById('confirm-delete');
+        const characterManagerModal = document.getElementById('character-manager-modal');
+        const openCharManagerBtn = document.getElementById('open-character-manager-btn');
+        const closeCharManagerBtn = document.getElementById('close-character-manager-btn');
+        const addCharacterForm = document.getElementById('add-character-form');
+        const characterListContainer = document.getElementById('character-list');
+        const shareModal = document.getElementById('share-modal');
+        const shareBtn = document.getElementById('share-btn');
+        const closeShareModalBtn = document.getElementById('close-share-modal-btn');
+        
+        // アプリケーションの状態
+        let sessionAppId = null;
+        let storyboardId = null;
+        let isViewOnly = false;
+        let unsubscribe = null;
+        let cards = [];
+        let characters = [];
+        let selectedCardId = null;
+
+        // === ヘルパー関数 ===
+        const readFileAsDataURL = (file) => {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        };
+        
+        const showCustomMessage = (message, isError = false) => {
+            const existingMessage = document.getElementById('custom-message-box');
+            if (existingMessage) {
+                existingMessage.remove();
+            }
+            const messageBox = document.createElement('div');
+            messageBox.id = 'custom-message-box';
+            const bgColor = isError ? '#f8d7da' : '#d4edda';
+            const textColor = isError ? '#721c24' : '#155724';
+            messageBox.style.cssText = `position:fixed; top:20px; left:50%; transform:translateX(-50%); background-color:${bgColor}; color:${textColor}; padding:15px; border-radius:8px; box-shadow:0 4px 6px rgba(0,0,0,0.1); z-index:1000; font-weight: 500;`;
+            messageBox.textContent = message;
+            document.body.appendChild(messageBox);
+            setTimeout(() => messageBox.remove(), 4000);
+        };
+
+        // === 初期化処理 ===
+        const initApp = async () => {
+            loadingOverlay.classList.remove('hidden');
+            try {
+                if (!auth.currentUser) {
+                    if (typeof __initial_auth_token !== 'undefined') {
+                        await signInWithCustomToken(auth, __initial_auth_token);
+                    } else {
+                        await signInAnonymously(auth);
+                    }
+                }
+                parseUrl();
+                if (storyboardId && sessionAppId) {
+                    await loadDataFromFirestore(sessionAppId, storyboardId);
+                } else {
+                    // ローカルでの新規作成モード
+                    updateUIForViewMode(false);
+                    renderAll();
+                    shareBtn.disabled = true;
+                    loadingOverlay.classList.add('hidden');
+                }
+            } catch (error) {
+                console.error("Initialization error:", error);
+                showCustomMessage("アプリの初期化に失敗しました。", true);
+                loadingOverlay.classList.add('hidden');
+            }
+        };
+        
+        const parseUrl = () => {
+            const hash = window.location.hash.substring(1);
+            let parts;
+            let mode;
+
+            if (hash.startsWith('edit/')) {
+                mode = 'edit';
+                parts = hash.substring(5).split('/');
+            } else if (hash.startsWith('view/')) {
+                mode = 'view';
+                parts = hash.substring(5).split('/');
+            }
+
+            if (parts && parts.length === 2 && parts[0] && parts[1]) {
+                sessionAppId = parts[0];
+                storyboardId = parts[1];
+                isViewOnly = (mode === 'view');
+            } else {
+                sessionAppId = envAppId;
+                storyboardId = null;
+                isViewOnly = false;
+            }
+        };
+
+        const resetLocalState = () => {
+            if (unsubscribe) unsubscribe();
+            unsubscribe = null;
+            cards = [];
+            characters = [];
+            selectedCardId = null;
+            clearForm();
+            renderAll();
+            shareBtn.disabled = true;
+            searchInput.value = '';
+        };
+
+        const loadDataFromFirestore = async (currentAppId, id) => {
+            if (!currentAppId || !id) {
+                showCustomMessage("無効なIDのためデータを読み込めません。", true);
+                console.error("Invalid IDs for loading:", { currentAppId, id });
+                return;
+            }
+
+            loadingOverlay.classList.remove('hidden');
+            const collectionPath = `artifacts/${currentAppId}/public/data/storyboards`;
+            const docRef = doc(db, collectionPath, id);
+            
+            try {
+                const docSnap = await getDoc(docRef);
+
+                if (docSnap.exists()) {
+                    if (unsubscribe) unsubscribe();
+                    
+                    unsubscribe = onSnapshot(docRef, (realtimeSnap) => {
+                        if (realtimeSnap.exists()) {
+                            const data = realtimeSnap.data();
+                            cards = data.cards || [];
+                            characters = data.characters || [];
+                            renderAll();
+                            updateUIForViewMode(isViewOnly);
+                            shareBtn.disabled = false;
+                        } else {
+                            // データが削除された場合の処理
+                            showCustomMessage("このストーリーは削除されました。", true);
+                            window.location.hash = '';
+                            parseUrl();
+                            resetLocalState();
+                        }
+                    });
+                } else {
+                    console.error(`No document found for appId: ${currentAppId}, storyboardId: ${id}`);
+                    showCustomMessage("指定されたデータが見つからないか、削除されました。", true);
+                    window.location.hash = '';
+                    parseUrl();
+                    resetLocalState();
+                }
+            } catch (error) {
+                console.error("Error fetching document:", error);
+                showCustomMessage("データの読み込み中にエラーが発生しました。", true);
+            } finally {
+                loadingOverlay.classList.add('hidden');
+            }
+        };
+
+        const saveDataToFirestore = async () => {
+            if (isViewOnly) return;
+            if (!auth.currentUser) {
+                showCustomMessage("認証エラーです。ページをリロードしてください。", true);
+                return;
+            }
+             if (!sessionAppId) {
+                showCustomMessage("セッションIDが無効です。ページをリロードしてください。", true);
+                console.error("Invalid sessionAppId on save:", sessionAppId);
+                return;
+            }
+            loadingOverlay.classList.remove('hidden');
+            
+            const dataToSave = { cards, characters };
+            const collectionPath = `artifacts/${sessionAppId}/public/data/storyboards`;
+            
+            try {
+                if (storyboardId) {
+                    // 既存のドキュメントを更新
+                    await setDoc(doc(db, collectionPath, storyboardId), dataToSave);
+                } else {
+                    // 新規ドキュメントを作成
+                    const docRef = await addDoc(collection(db, collectionPath), dataToSave);
+                    storyboardId = docRef.id;
+                    // URLを更新して、新しいIDを反映
+                    window.location.hash = `#edit/${sessionAppId}/${storyboardId}`;
+                    // 新しいデータをリッスン開始
+                    await loadDataFromFirestore(sessionAppId, storyboardId);
+                }
+            } catch (error) {
+                console.error("Error saving document: ", error);
+                showCustomMessage(`データの保存エラー: ${error.message}`, true);
+            } finally {
+                loadingOverlay.classList.add('hidden');
+            }
+        };
+        
+        // === UIレンダリング関連 ===
+        const renderAll = () => {
+            renderCardList();
+            renderCharacterSelector();
+            renderExistingTags();
+            renderCharacterManager();
+            if (selectedCardId) {
+                if (cards.some(c => c.id === selectedCardId)) {
+                    displayCard(selectedCardId);
+                } else {
+                    showPlaceholder();
+                }
+            } else {
+                showPlaceholder();
+            }
+        };
+        const renderCardList = () => {
+            const filterText = searchInput.value.toLowerCase().trim();
+            cardList.innerHTML = '';
+            let filteredCards = cards;
+            if (filterText) {
+                filteredCards = cards.filter(card => 
+                    card.title.toLowerCase().includes(filterText) ||
+                    (card.source && card.source.toLowerCase().includes(filterText)) ||
+                    card.characterTags.some(tag => tag.toLowerCase().includes(filterText)) ||
+                    card.customTags.some(tag => tag.toLowerCase().includes(filterText))
+                );
+            }
+            if (filteredCards.length === 0 && cards.length > 0) {
+                cardList.innerHTML = `<p class="text-gray-500 dark:text-gray-400 text-center py-4">該当なし</p>`;
+                return;
+            }
+            filteredCards.sort((a,b) => b.id - a.id).forEach(card => {
+                const el = document.createElement('div');
+                el.className = `p-3 rounded-lg cursor-pointer border-2 ${selectedCardId === card.id ? 'bg-indigo-100 dark:bg-indigo-900 border-indigo-500' : 'bg-gray-50 dark:bg-gray-700 border-transparent hover:border-indigo-300 dark:hover:border-indigo-700'}`;
+                el.dataset.id = card.id;
+                el.innerHTML = `<h4 class="font-bold truncate">${card.title}</h4><p class="text-sm text-indigo-500 dark:text-indigo-400 truncate">${card.storyType}</p>`;
+                cardList.appendChild(el);
+            });
+        };
+        const displayCard = (id) => {
+            const card = cards.find(c => c.id === id);
+            if (!card) { showPlaceholder(); return; }
+            selectedCardId = id;
+            placeholder.classList.add('hidden');
+            cardContent.classList.remove('hidden');
+            const createTagBadges = (tags, color) => tags.map(tag => `<span class="tag-badge ${color}" data-tag-type="search" data-tag-value="${tag}">${tag}</span>`).join('');
+            const charBadges = createTagBadges(card.characterTags, 'bg-sky-100 text-sky-800 dark:bg-sky-900 dark:text-sky-200 hover:bg-sky-200');
+            const customBadges = createTagBadges(card.customTags, 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200 hover:bg-emerald-200');
+            cardContent.innerHTML = `
+                <div class="flex justify-between items-start mb-4">
+                    <div>
+                        <p class="text-md text-indigo-500 dark:text-indigo-400 font-semibold">${card.storyType}</p>
+                        <h2 class="text-3xl font-bold">${card.title}</h2>
+                    </div>
+                    <div class="flex space-x-2">
+                        <button id="edit-btn" class="p-2 bg-gray-200 dark:bg-gray-600 rounded-md" title="編集" style="display: ${isViewOnly ? 'none' : 'block'}"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z"></path></svg></button>
+                        <button id="delete-btn" class="p-2 bg-red-500 text-white rounded-md" title="削除" style="display: ${isViewOnly ? 'none' : 'block'}"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>
+                    </div>
+                </div>
+                <div class="mb-6 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg"><h3 class="font-semibold text-sm text-gray-500 dark:text-gray-400">出典</h3><p class="text-lg">${card.source || '未設定'}</p></div>
+                ${card.image ? `<img src="${card.image}" alt="${card.title}" class="w-full max-w-md mx-auto rounded-lg shadow-md mb-6" onerror="this.src='https://placehold.co/600x400/e2e8f0/94a3b8?text=Error'">` : ''}
+                <div class="space-y-4">
+                    <div><h3 class="font-semibold text-lg">登場キャラクター</h3><div>${charBadges || 'なし'}</div></div>
+                    <div><h3 class="font-semibold text-lg">カップリング・その他タグ</h3><div>${customBadges || 'なし'}</div></div>
+                    <div><h3 class="font-semibold text-lg">あらすじ・文字起こし</h3><div class="prose dark:prose-invert max-w-none mt-2 p-4 bg-gray-50 dark:bg-gray-900 rounded-md"><p class="prose-pre-wrap">${card.description || '未設定'}</p></div></div>
+                </div>`;
+            renderCardList();
+        };
+        const renderCharacterSelector = (selectedNames = []) => {
+            characterSelector.innerHTML = '';
+            if (characters.length === 0) {
+                characterSelector.innerHTML = `<p class="text-gray-500 col-span-full text-center text-sm">キャラクターを登録してください</p>`;
+            }
+            characters.forEach(char => {
+                const isSelected = selectedNames.includes(char.name);
+                const item = document.createElement('div');
+                item.className = `character-selector-item flex flex-col items-center p-1 rounded-md cursor-pointer ${isSelected ? 'selected' : ''}`;
+                item.dataset.charName = char.name;
+                item.innerHTML = `
+                    <img src="${char.imageData || 'https://placehold.co/64x64/e2e8f0/94a3b8?text=?'}" class="w-12 h-12 rounded-full object-cover mb-1" onerror="this.src='https://placehold.co/64x64/e2e8f0/94a3b8?text=?'">
+                    <span class="text-xs text-center truncate w-full">${char.name}</span>
+                `;
+                characterSelector.appendChild(item);
+            });
+        };
+        const renderExistingTags = () => {
+            const allTags = new Set(cards.flatMap(card => card.customTags));
+            existingTagsContainer.innerHTML = '';
+            allTags.forEach(tag => {
+                const badge = document.createElement('span');
+                badge.className = 'tag-badge bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200 hover:bg-emerald-200';
+                badge.textContent = tag;
+                badge.dataset.tagType = 'add';
+                existingTagsContainer.appendChild(badge);
+            });
+        };
+        const renderCharacterManager = () => {
+            characterListContainer.innerHTML = '';
+            characters.forEach(char => {
+                const item = document.createElement('div');
+                item.className = 'relative p-2 bg-white dark:bg-gray-700 rounded-lg shadow';
+                item.innerHTML = `
+                    <img src="${char.imageData || 'https://placehold.co/100x100/e2e8f0/94a3b8?text=?'}" class="w-full h-24 object-cover rounded-md mb-2" onerror="this.src='https://placehold.co/100x100/e2e8f0/94a3b8?text=?'">
+                    <p class="text-center font-semibold truncate">${char.name}</p>
+                    <button data-char-id="${char.id}" class="char-delete-btn absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs">&times;</button>
+                `;
+                characterListContainer.appendChild(item);
+            });
+        };
+        const showPlaceholder = () => { selectedCardId = null; placeholder.classList.remove('hidden'); cardContent.classList.add('hidden'); cardContent.innerHTML = ''; renderCardList(); };
+        const clearForm = () => { 
+            cardForm.reset(); 
+            cardIdInput.value = ''; 
+            cardImageDataInput.value = '';
+            cardImagePreview.classList.add('hidden');
+            formTitle.textContent = '新規ストーリー作成'; 
+            renderCharacterSelector(); 
+        };
+        const updateUIForViewMode = (isView) => {
+            const formSection = document.getElementById('form-section');
+            const charManagerBtn = document.getElementById('open-character-manager-btn');
+            if (isView) {
+                formSection.classList.add('form-disabled');
+                charManagerBtn.style.display = 'none';
+            } else {
+                formSection.classList.remove('form-disabled');
+                charManagerBtn.style.display = 'block';
+            }
+            if(selectedCardId) displayCard(selectedCardId);
+        };
+        
+        // === イベントハンドラ ===
+        cardForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if(isViewOnly) return;
+            const id = cardIdInput.value;
+            const selectedCharElements = characterSelector.querySelectorAll('.selected');
+            const selectedCharNames = Array.from(selectedCharElements).map(el => el.dataset.charName);
+            const customTags = cardCustomTagsInput.value.split(',').map(tag => tag.trim()).filter(Boolean);
+            let imageData = cardImageDataInput.value;
+            const imageFile = cardImageFileInput.files[0];
+            if (imageFile) {
+                try { imageData = await readFileAsDataURL(imageFile); } catch (error) { console.error("Error reading file:", error); imageData = cardImageDataInput.value; }
+            }
+            const cardData = {
+                storyType: cardTypeInput.value, title: cardTitleInput.value, source: cardSourceInput.value,
+                characterTags: selectedCharNames, customTags: customTags,
+                image: imageData, description: cardDescriptionInput.value,
+            };
+            if (id) {
+                const index = cards.findIndex(c => c.id == id);
+                if (index > -1) cards[index] = { ...cards[index], ...cardData };
+            } else {
+                cards.push({ id: Date.now(), ...cardData });
+            }
+            await saveDataToFirestore();
+            clearForm();
+        });
+        
+        newCardBtn.addEventListener('click', () => {
+            window.location.href = window.location.href.split('#')[0];
+        });
+
+        cardList.addEventListener('click', (e) => { if (e.target.closest('[data-id]')) displayCard(parseInt(e.target.closest('[data-id]').dataset.id)); });
+        searchInput.addEventListener('input', renderCardList);
+        cardContent.addEventListener('click', (e) => {
+            const target = e.target;
+            if (target.closest('#edit-btn') && selectedCardId && !isViewOnly) {
+                const card = cards.find(c => c.id === selectedCardId);
+                if (card) {
+                    cardIdInput.value = card.id; cardTypeInput.value = card.storyType;
+                    cardTitleInput.value = card.title; cardSourceInput.value = card.source;
+                    cardCustomTagsInput.value = card.customTags.join(', ');
+                    cardImageDataInput.value = card.image || '';
+                    if(card.image) {
+                        cardImagePreview.src = card.image;
+                        cardImagePreview.classList.remove('hidden');
+                    } else {
+                        cardImagePreview.classList.add('hidden');
+                    }
+                    cardImageFileInput.value = '';
+                    cardDescriptionInput.value = card.description;
+                    formTitle.textContent = 'ストーリーを編集';
+                    renderCharacterSelector(card.characterTags);
+                    cardTitleInput.focus();
+                }
+            }
+            if (target.closest('#delete-btn') && selectedCardId && !isViewOnly) { 
+                deleteModal.classList.remove('hidden'); 
+            }
+            if (target.dataset.tagType === 'search') { searchInput.value = target.dataset.tagValue; searchInput.dispatchEvent(new Event('input')); }
+        });
+        characterSelector.addEventListener('click', e => {
+            const item = e.target.closest('.character-selector-item');
+            if (item) item.classList.toggle('selected');
+        });
+        existingTagsContainer.addEventListener('click', e => {
+            if (e.target.dataset.tagType === 'add') {
+                const tag = e.target.textContent;
+                const currentTags = cardCustomTagsInput.value.split(',').map(t => t.trim()).filter(Boolean);
+                if (!currentTags.includes(tag)) {
+                    currentTags.push(tag);
+                    cardCustomTagsInput.value = currentTags.join(', ');
+                }
+            }
+        });
+        cardImageFileInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                cardImageDataInput.value = await readFileAsDataURL(file);
+                cardImagePreview.src = cardImageDataInput.value;
+                cardImagePreview.classList.remove('hidden');
+            }
+        });
+        cancelDeleteBtn.addEventListener('click', () => { deleteModal.classList.add('hidden'); });
+        confirmDeleteBtn.addEventListener('click', async () => {
+            if (selectedCardId) {
+                cards = cards.filter(c => c.id !== selectedCardId);
+                await saveDataToFirestore();
+                showPlaceholder();
+            }
+            deleteModal.classList.add('hidden');
+        });
+        openCharManagerBtn.addEventListener('click', () => { if(!isViewOnly) { renderCharacterManager(); characterManagerModal.classList.remove('hidden'); }});
+        closeCharManagerBtn.addEventListener('click', () => characterManagerModal.classList.add('hidden'));
+        addCharacterForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const nameInput = document.getElementById('char-name');
+            const imgFileInput = document.getElementById('char-img-file');
+            let imageData = '';
+            if(imgFileInput.files[0]) {
+                try { imageData = await readFileAsDataURL(imgFileInput.files[0]); } catch(error) { console.error("Error reading char file:", error); }
+            }
+            if (nameInput.value.trim()) {
+                characters.push({ id: Date.now(), name: nameInput.value.trim(), imageData: imageData });
+                await saveDataToFirestore();
+                addCharacterForm.reset();
+            }
+        });
+        characterListContainer.addEventListener('click', async (e) => {
+            if (e.target.classList.contains('char-delete-btn')) {
+                const id = parseInt(e.target.dataset.charId);
+                characters = characters.filter(c => c.id !== id);
+                await saveDataToFirestore();
+            }
+        });
+        
+        shareBtn.addEventListener('click', () => {
+            if (!storyboardId || !sessionAppId) {
+                showCustomMessage("先にストーリーを1つ以上保存して、共有リンクを生成してください。", true);
+                return;
+            }
+
+            // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+            // ★ 修正点: 共有リンクのベースURLを設定方式に変更                       ★
+            // ★ このツールをWebサーバーにアップロードしたら、下のURLを             ★
+            // ★ あなたがアップロードした実際のファイルのURLに書き換えてください。   ★
+            // ★ 例: "https://example.com/yumesute-tool/index.html"             ★
+            // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+            const baseUrl = "YOUR_APP_URL_HERE";
+
+            if (baseUrl === "YOUR_APP_URL_HERE") {
+                showCustomMessage("共有機能を使うには、まずコード内のURLを設定してください。", true);
+                document.getElementById('edit-link-input').value = 'コード内のURLを設定してください';
+                document.getElementById('view-link-input').value = 'コード内のURLを設定してください';
+                shareModal.classList.remove('hidden');
+                return;
+            }
+
+            document.getElementById('edit-link-input').value = `${baseUrl}#edit/${sessionAppId}/${storyboardId}`;
+            document.getElementById('view-link-input').value = `${baseUrl}#view/${sessionAppId}/${storyboardId}`;
+            shareModal.classList.remove('hidden');
+        });
+        
+        closeShareModalBtn.addEventListener('click', () => shareModal.classList.add('hidden'));
+        
+        document.querySelectorAll('.copy-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const button = e.currentTarget;
+                if (!button) return;
+
+                const targetId = button.dataset.copyTarget;
+                const input = document.getElementById(targetId);
+                
+                if (!input || input.value.includes('コード内のURLを設定してください')) {
+                    return; // URLが設定されていない場合はコピーしない
+                }
+
+                input.select();
+                const originalText = button.textContent;
+                try {
+                    document.execCommand('copy');
+                    button.textContent = "コピー完了!";
+                } catch (err) {
+                    button.textContent = "失敗";
+                    console.error('Copy failed', err);
+                }
+                setTimeout(() => {
+                    if (document.body.contains(button)) {
+                         button.textContent = originalText;
+                    }
+                }, 2000);
+            });
+        });
+
+        // アプリケーションの実行開始
+        initApp();
+    });
+</script>
+</body>
+</html>
